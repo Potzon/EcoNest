@@ -63,7 +63,7 @@ Long-range feature roadmap is susceptible to changes. What is planned and in pro
 
 - **[Open issues](https://github.com/potzon/EcoNest/issues)** - Planned work, accepted feature requests, and known gaps. Issues are triaged and labelled by maintainers.
 - **[Releases](https://github.com/potzon/EcoNest/releases)** - What actually shipped in each version, with notes generated from the merged pull requests on that release branch.
-- **[Kanban Board](https://github.com/users/g/projects/5)** - Interactive view of current tasks, active development, and project milestones across different workflow stages.
+- **[Kanban Board](https://github.com/users/josuviteri/projects/5)** - Interactive view of current tasks, active development, and project milestones across different workflow stages.
 
 ## License
 Licensed under the Apache License, Version 2.0; see [`LICENSE`](LICENSE). Third-party attributions are listed in [`NOTICE`](NOTICE) and in the per-component `NOTICE` files.
