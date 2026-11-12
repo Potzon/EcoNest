@@ -1,6 +1,6 @@
 name: CI
 
-# Se ejecuta en cada push a cualquier rama y en cada pull request hacia main.
+# Se ejecuta en cada push a cualquier rama y en cada pull request hacia main
 on:
   push:
   pull_request:
@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# Si llega un push nuevo a la misma rama, cancela la ejecución anterior.
+# Si llega un push nuevo a la misma rama, cancela la ejecución anterior
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -19,12 +19,12 @@ env:
   PYTHON_VERSION: "3.12" # el mismo que usa backend/Dockerfile
 
 jobs:
-  # ------------------------------------------------------------------ commits
+  # commits
   commits:
     name: Revisión de commits
     runs-on: ubuntu-latest
     env:
-      # Pon "true" para que un commit sin referencia a issue (Closes #NN) haga fallar el CI.
+      # true para que un commit sin referencia a issue haga fallar el CI
       REQUIRE_ISSUE_REF: "false"
     steps:
       - uses: actions/checkout@v6
@@ -68,7 +68,7 @@ jobs:
             git shortlog -sn --no-merges HEAD | awk '{ c = $1; $1 = ""; sub(/^ /, ""); printf "| %s | %s |\n", c, $0 }'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ------------------------------------------------------------------ backend
+  # backend
   backend:
     name: Backend (SQLite + PostgreSQL + Docker)
     runs-on: ubuntu-latest
@@ -103,8 +103,8 @@ jobs:
       - name: Tests (SQLite)
         run: python -m pytest -q
 
-      # La base de datos de producción es PostgreSQL: date_trunc, JSONB, zonas horarias...
-      # no se comportan igual que en SQLite.
+      # La base de datos de producción es PostgreSQL: date_trunc, JSONB, zonas horarias
+      # no se comportan igual que en SQLite
       - name: Tests (PostgreSQL)
         env:
           DATABASE_URL: postgresql+psycopg://econest:ci-password@localhost:5432/econest
@@ -121,7 +121,7 @@ jobs:
       - name: Construir la imagen de la API
         run: docker build -t econest-api .
 
-  # ------------------------------------------------------- YOLO + puente + contrato
+  # YOLO + puente + contrato
   yolo:
     name: Módulo YOLO y contrato con el backend
     runs-on: ubuntu-latest
@@ -136,7 +136,7 @@ jobs:
             requirements.txt
             backend/requirements.txt
 
-      # ultralytics arrastra PyTorch (~GB) y los tests no lo necesitan: el detector
+      # ultralytics arrastra PyTorch y los tests no lo necesitan: el detector
       # lo importa de forma tardía. Se instala todo lo demás.
       - name: Instalar dependencias (sin ultralytics)
         run: |
