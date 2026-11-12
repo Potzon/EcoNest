@@ -210,3 +210,82 @@ def test_device_registration_validates_ranges_and_lengths(client):
     assert client.post("/devices", headers=ADMIN, json={**base, "lat": 999}).status_code == 422
     assert client.post("/devices", headers=ADMIN, json={**base, "lon": -999}).status_code == 422
     assert client.post("/devices", headers=ADMIN, json={**base, "name": "x" * 129}).status_code == 422
+
+
+# ------------------------------------------------------ punto 3: CORS, estado, heatmap
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from app.db import SessionLocal  # noqa: E402
+from app.models import DeviceStatus  # noqa: E402
+
+
+def test_cors_preflight_allows_configured_origin_only(client):
+    ask = {"Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "authorization"}
+    ok = client.options("/detections", headers={"Origin": "http://localhost:5173", **ask})
+    assert ok.status_code == 200
+    assert ok.headers["access-control-allow-origin"] == "http://localhost:5173"
+    bad = client.options("/detections", headers={"Origin": "https://evil.example", **ask})
+    assert "access-control-allow-origin" not in bad.headers
+
+
+def test_cors_headers_also_on_error_responses(client):
+    r = client.get("/detections", params={"limit": 0}, headers={"Origin": "http://localhost:5173"})
+    assert r.status_code == 422
+    assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_status_requires_device_token(client):
+    assert client.post("/devices/me/status", json={}).status_code == 401
+    assert client.post("/devices/me/status", json={}, headers={"Authorization": "Bearer nope"}).status_code == 401
+
+
+def test_status_post_and_validation(client, token):
+    h = {"Authorization": f"Bearer {token}"}
+    r = client.post("/devices/me/status", headers=h, json={"cpu_temp_c": 51.5, "load_1m": 0.42, "mem_used_pct": 38.0, "uptime_s": 3600})
+    assert r.status_code == 201
+    assert r.json()["cpu_temp_c"] == 51.5 and r.json()["timestamp"]
+    assert client.post("/devices/me/status", headers=h, json={}).status_code == 201  # heartbeat vacío
+    assert client.post("/devices/me/status", headers=h, json={"cpu_temp_c": 999}).status_code == 422
+    assert client.post("/devices/me/status", headers=h, json={"mem_used_pct": 120}).status_code == 422
+    assert client.post("/devices/me/status", headers=h, json={"cpu_temp": 50}).status_code == 422  # campo desconocido
+
+
+def test_devices_list_shows_online_status_without_secrets(client, token):
+    client.post("/devices/me/status", headers={"Authorization": f"Bearer {token}"}, json={"cpu_temp_c": 48.0})
+    r = client.get("/devices")
+    assert r.status_code == 200
+    dev = next(d for d in r.json() if d["id"] == "nest-01")
+    assert dev["online"] is True and dev["last_seen"] and dev["status"]["cpu_temp_c"] == 48.0
+    assert not any("token" in k for k in dev)
+
+
+def test_device_without_heartbeat_is_offline(client):
+    client.post("/devices", headers=ADMIN, json={"id": "nest-02", "name": "Sin señal", "zone": "Zona B", "lat": 43.3, "lon": -2.9})
+    dev = next(d for d in client.get("/devices").json() if d["id"] == "nest-02")
+    assert dev["online"] is False and dev["last_seen"] is None and dev["status"] is None
+
+
+def test_old_heartbeat_means_offline(client):
+    client.post("/devices", headers=ADMIN, json={"id": "nest-03", "name": "Caída", "zone": "Zona C", "lat": 43.4, "lon": -2.9})
+    old = datetime.now(timezone.utc) - timedelta(seconds=config.ONLINE_THRESHOLD_SECONDS + 60)
+    with SessionLocal() as db:
+        db.add(DeviceStatus(device_id="nest-03", timestamp=old, cpu_temp_c=70.0))
+        db.commit()
+    dev = next(d for d in client.get("/devices").json() if d["id"] == "nest-03")
+    assert dev["online"] is False and dev["last_seen"] is not None
+
+
+def test_status_history(client, token):
+    h = {"Authorization": f"Bearer {token}"}
+    for t in (40.0, 41.0, 42.0):
+        client.post("/devices/me/status", headers=h, json={"cpu_temp_c": t})
+    hist = client.get("/devices/nest-01/status", params={"limit": 2}).json()
+    assert len(hist) == 2
+    assert hist[0]["timestamp"] >= hist[1]["timestamp"]  # más reciente primero
+    assert client.get("/devices/nest-01/status", params={"since": "2099-01-01T00:00:00Z"}).json() == []
+    assert client.get("/devices/no-existe/status").status_code == 404
+
+
+def test_heatmap_zone_filter(client):
+    assert client.get("/heatmap", params={"zone": "Doña Casilda"}).json()
+    assert client.get("/heatmap", params={"zone": "Otra zona"}).json() == []
