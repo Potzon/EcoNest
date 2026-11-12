@@ -18,7 +18,7 @@ def hash_token(token: str) -> str:
 
 
 def require_admin(cred: HTTPAuthorizationCredentials | None = Depends(bearer)):
-    if not cred or not hmac.compare_digest(cred.credentials, config.ADMIN_TOKEN):
+    if not cred or not config.ADMIN_TOKEN or not hmac.compare_digest(cred.credentials, config.ADMIN_TOKEN):
         raise HTTPException(401, "Invalid admin token")
 
 

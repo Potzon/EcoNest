@@ -21,16 +21,16 @@ class BirdDetection(BaseModel):
 
 
 class DetectionIn(BaseModel):
-    device_id: str
+    device_id: str = Field(min_length=1, max_length=64)
     # Obligatoriamente con zona horaria (p. ej. "2026-11-12T10:15:00Z"); se normaliza a UTC.
     timestamp: AwareDatetime
     # Se acepta por compatibilidad con el cliente, pero se IGNORA: la ubicación
     # es la del dispositivo registrado, no la que declare el payload.
     location: Optional[Location] = None
-    detections: list[BirdDetection]
+    detections: list[BirdDetection] = Field(max_length=config.MAX_DETECTIONS_PER_EVENT)
     # Opcional: si se envía debe coincidir con len(detections); si no, se calcula.
     count: Optional[int] = Field(default=None, ge=0)
-    screenshot: Optional[str] = None  # base64 (JPEG/PNG)
+    screenshot: Optional[str] = Field(default=None, max_length=config.MAX_SCREENSHOT_B64_CHARS)  # base64 (JPEG/PNG)
 
     @model_validator(mode="after")
     def _check(self):
@@ -57,10 +57,10 @@ class DetectionOut(BaseModel):
 
 class DeviceCreate(BaseModel):
     id: str = Field(min_length=1, max_length=64, pattern=r"^[\w-]+$")
-    name: str
-    zone: str
-    lat: float
-    lon: float
+    name: str = Field(min_length=1, max_length=128)
+    zone: str = Field(min_length=1, max_length=128)
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
 
 
 class DeviceCreated(BaseModel):

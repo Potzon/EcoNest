@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from . import config
 from .db import Base, engine, get_db
+from .limits import BodySizeLimitMiddleware
 from .models import Detection, Device
 from .schemas import DetectionIn, DetectionOut, DeviceCreate, DeviceCreated
 from .security import hash_token, require_admin, require_device
@@ -23,12 +24,14 @@ PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    config.validate_settings()  # falla al arrancar si ADMIN_TOKEN falta o es débil
     config.SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(engine)  # MVP: para producción, migrar a Alembic
     yield
 
 
 app = FastAPI(title="EcoNest API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=config.MAX_BODY_BYTES)
 
 
 @app.get("/health")

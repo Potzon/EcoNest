@@ -5,14 +5,14 @@ import tempfile
 _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["SCREENSHOT_DIR"] = f"{_tmp}/shots"
-os.environ["ADMIN_TOKEN"] = "admin-secret"
+os.environ["ADMIN_TOKEN"] = "admin-secret-0123456789"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 
-ADMIN = {"Authorization": "Bearer admin-secret"}
+ADMIN = {"Authorization": "Bearer admin-secret-0123456789"}
 JPEG = base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
 
 
@@ -160,3 +160,53 @@ def test_timestamp_with_offset_is_normalised_to_utc(client, token):
     r = client.post("/detections", json=payload(ts="2026-10-04T12:00:00+01:00"), headers=h)
     assert r.status_code == 201
     assert r.json()["timestamp"].startswith("2026-10-04T11:00:00")
+
+
+# ------------------------------------------------------------ punto 2: límites y arranque
+from app import config  # noqa: E402
+
+
+def test_too_many_detections_rejected(client, token):
+    h = {"Authorization": f"Bearer {token}"}
+    ok = payload(count=config.MAX_DETECTIONS_PER_EVENT, ts="2026-10-05T08:00:00Z")
+    assert client.post("/detections", json=ok, headers=h).status_code == 201
+    too_many = payload(count=config.MAX_DETECTIONS_PER_EVENT + 1)
+    assert client.post("/detections", json=too_many, headers=h).status_code == 422
+
+
+def test_screenshot_string_too_long_rejected(client, token):
+    h = {"Authorization": f"Bearer {token}"}
+    huge = "A" * (config.MAX_SCREENSHOT_B64_CHARS + 4)
+    assert client.post("/detections", json=payload(screenshot=huge), headers=h).status_code == 422
+
+
+def test_oversized_body_rejected_before_parsing(client, token):
+    h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    r = client.post("/detections", content=b" " * (config.MAX_BODY_BYTES + 1), headers=h)
+    assert r.status_code == 413
+
+
+def test_chunked_body_without_length_rejected(client, token):
+    h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    r = client.post("/detections", content=iter([b"{}"]), headers=h)
+    assert r.status_code == 411
+
+
+def test_normal_screenshot_still_works_under_limit(client, token):
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.post("/detections", json=payload(ts="2026-10-05T09:00:00Z", screenshot=JPEG), headers=h).status_code == 201
+
+
+@pytest.mark.parametrize("bad", ["", "change-me", "Admin", "demasiado-corto"])
+def test_app_refuses_to_start_with_missing_or_weak_admin_token(monkeypatch, bad):
+    monkeypatch.setattr(config, "ADMIN_TOKEN", bad)
+    with pytest.raises(RuntimeError):
+        with TestClient(app):
+            pass
+
+
+def test_device_registration_validates_ranges_and_lengths(client):
+    base = {"id": "nest-x", "name": "n", "zone": "z", "lat": 43.0, "lon": -2.9}
+    assert client.post("/devices", headers=ADMIN, json={**base, "lat": 999}).status_code == 422
+    assert client.post("/devices", headers=ADMIN, json={**base, "lon": -999}).status_code == 422
+    assert client.post("/devices", headers=ADMIN, json={**base, "name": "x" * 129}).status_code == 422

@@ -14,7 +14,7 @@ pytest.importorskip("sqlalchemy")
 _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/contract.db"
 os.environ["SCREENSHOT_DIR"] = f"{_tmp}/shots"
-os.environ["ADMIN_TOKEN"] = "admin-secret"
+os.environ["ADMIN_TOKEN"] = "admin-secret-0123456789"
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -35,7 +35,7 @@ def test_yolo_message_is_accepted_by_backend():
     with TestClient(app) as c:
         token = c.post(
             "/devices",
-            headers={"Authorization": "Bearer admin-secret"},
+            headers={"Authorization": "Bearer admin-secret-0123456789"},
             json={"id": "nest-01", "name": "Farola", "zone": "Doña Casilda", "lat": 43.263, "lon": -2.935},
         ).json()["token"]
         r = c.post(
