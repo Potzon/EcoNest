@@ -1,0 +1,12 @@
+mqtt:
+  host: localhost
+  port: 1883
+  username: null
+  password: null
+  input_topic: econest/camera/image
+  output_topic: econest/detections
+model:
+  weights: yolo11n.pt   # pesos COCO congelados (alternativa sin entrenar)
+  conf: 0.25
+  classes: [14]         # COCO 14 = bird
+  device: cpu
