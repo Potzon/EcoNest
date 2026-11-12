@@ -8,6 +8,12 @@ camera/sensor --(JPEG)--> econest/camera/image --> [econest_yolo] --(JSON)--> ec
 
 If there are no birds in the photo, nothing is published.
 
+To store the detections and serve them to the dashboard, a second process (`uplink`) forwards each MQTT detection to the backend REST API over HTTPS. Grafana reads from the backend database, not from MQTT:
+
+```
+[econest_yolo] --> econest/detections --> [uplink] --(POST /detections + device token)--> backend --> PostgreSQL --> Grafana
+```
+
 ## Requirements
 
 - Python 3.10+ (on a Raspberry Pi 5 running 64-bit Raspberry Pi OS)
@@ -108,6 +114,20 @@ Test with the broker:
 mosquitto_sub -t econest/detections
 mosquitto_pub -t econest/camera/image -f foto.jpg
 ```
+
+## Sending detections to the backend (uplink)
+
+1. Register the device once (see `backend/README.md`) and keep the token it returns.
+2. Fill in the `backend` section of `config.yaml` (`url`, `device_id`) and export the token. Do not write the token in the YAML:
+
+```bash
+export ECONEST_DEVICE_TOKEN=...
+python -m econest_yolo.uplink --config config.yaml
+```
+
+The uplink adapts the message to the backend contract: `bbox_xyxy` becomes `bbox = [x, y, w, h]` and `image_b64` becomes `screenshot`. It does **not** send `count` or `location`: the backend derives them from the detections and from the registered device. If the backend is unreachable or answers 5xx/429, it retries with exponential backoff (up to 60 s) and keeps at most `backend.queue_size` pending detections in memory (they are lost if the process restarts). A 4xx answer (bad token, invalid payload) is logged and not retried. If `backend.url` is not set, nothing is sent and the service works as before.
+
+The Raspberry Pi clock must be synchronised (NTP): the backend rejects timestamps more than 5 minutes in the future.
 
 ## Message contract
 
