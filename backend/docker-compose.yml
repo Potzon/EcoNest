@@ -4,8 +4,8 @@ services:
     environment:
       POSTGRES_DB: econest
       POSTGRES_USER: econest
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?Define GRAFANA_DB_PASSWORD en .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
@@ -18,7 +18,7 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql+psycopg://econest:${POSTGRES_PASSWORD}@db:5432/econest
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Define ADMIN_TOKEN en .env (mínimo 16 caracteres)}
       SCREENSHOT_DIR: /data/screenshots
     volumes:
       - screenshots:/data/screenshots
@@ -31,7 +31,7 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Define GRAFANA_ADMIN_PASSWORD en .env}
       GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
     volumes:
       - grafana-data:/var/lib/grafana

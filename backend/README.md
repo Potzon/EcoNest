@@ -14,6 +14,20 @@ docker compose up --build
 
 > El script `docker/init-db.sh` solo se ejecuta al crear el volumen de Postgres por primera vez. Si cambias `GRAFANA_DB_PASSWORD` después, haz `docker compose down -v` (borra los datos).
 
+## Límites y arranque seguro
+
+- **`ADMIN_TOKEN` es obligatorio**: la API no arranca si falta, tiene menos de 16 caracteres o es un valor típico (`change-me`, `admin`...). `docker compose` tampoco arranca si falta cualquier secreto de `.env`. Genera valores con `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+- **Tamaño de las peticiones** (configurable por entorno):
+
+| Variable | Por defecto | Efecto |
+|---|---|---|
+| `MAX_SCREENSHOT_BYTES` | 2 000 000 | Tamaño máximo de la captura ya decodificada |
+| `MAX_DETECTIONS_PER_EVENT` | 100 | Máximo de detecciones en un solo `POST /detections` (422) |
+| — (derivado) | ≈ 2,8 MB | Cuerpo máximo de cualquier POST/PUT/PATCH: si `Content-Length` lo supera, 413 antes de leer nada |
+
+- Las peticiones con cuerpo deben llevar `Content-Length`; con `Transfer-Encoding: chunked` y sin longitud se responde 411. Los clientes habituales (`httpx`, `requests`, `curl -d`) ya lo envían.
+- Pendiente: poner un proxy inverso con HTTPS delante (Caddy/nginx) con su propio límite de cuerpo.
+
 ## Registrar un dispositivo (una vez por Raspberry)
 
 ```bash
