@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: EcoNest
+    uid: econest-pg
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: db:5432
+    user: grafana_ro
+    isDefault: true
+    jsonData:
+      database: econest
+      sslmode: disable
+      timescaledb: false
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}

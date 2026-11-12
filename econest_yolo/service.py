@@ -28,7 +28,7 @@ def run(cfg: Config) -> None:
         if not dets:
             log.info("sin aves")
             return
-        c.publish(cfg.mqtt.output_topic, build_payload(dets, w, h, msg.payload))
+        c.publish(cfg.mqtt.output_topic, build_payload(dets, w, h, msg.payload), qos=1)
         log.info("publicadas %d detecciones", len(dets))
 
     client.on_connect = on_connect

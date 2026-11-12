@@ -10,3 +10,7 @@ model:
   conf: 0.25
   classes: [14]         # COCO 14 = bird
   device: cpu
+backend:                # opcional: si no hay url, solo se publica por MQTT
+  url: null             # p. ej. https://econest.example.org
+  device_id: nest-01    # el id registrado con POST /devices
+  # token: ...          # NO poner aquí: export ECONEST_DEVICE_TOKEN=...
