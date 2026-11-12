@@ -74,10 +74,11 @@ def post_detection(body: DetectionIn, device: Device = Depends(require_device), 
     row = Detection(
         device_id=device.id,
         timestamp=body.timestamp,
-        zone=body.location.zone,
-        lat=body.location.lat,
-        lon=body.location.lon,
-        count=body.count,
+        # Ubicación del dispositivo registrado, nunca la del payload.
+        zone=device.zone,
+        lat=device.lat,
+        lon=device.lon,
+        count=len(body.detections),
         detections=[d.model_dump(by_alias=True) for d in body.detections],
         screenshot_path=shot,
     )

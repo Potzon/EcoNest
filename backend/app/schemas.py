@@ -1,7 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+from . import config
 
 
 class Location(BaseModel):
@@ -20,11 +22,25 @@ class BirdDetection(BaseModel):
 
 class DetectionIn(BaseModel):
     device_id: str
-    timestamp: datetime
-    location: Location
+    # Obligatoriamente con zona horaria (p. ej. "2026-11-12T10:15:00Z"); se normaliza a UTC.
+    timestamp: AwareDatetime
+    # Se acepta por compatibilidad con el cliente, pero se IGNORA: la ubicación
+    # es la del dispositivo registrado, no la que declare el payload.
+    location: Optional[Location] = None
     detections: list[BirdDetection]
-    count: int = Field(ge=0)
+    # Opcional: si se envía debe coincidir con len(detections); si no, se calcula.
+    count: Optional[int] = Field(default=None, ge=0)
     screenshot: Optional[str] = None  # base64 (JPEG/PNG)
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.count is not None and self.count != len(self.detections):
+            raise ValueError(f"count ({self.count}) must equal len(detections) ({len(self.detections)})")
+        limit = datetime.now(timezone.utc) + timedelta(seconds=config.MAX_FUTURE_SKEW_SECONDS)
+        if self.timestamp > limit:
+            raise ValueError("timestamp is in the future")
+        self.timestamp = self.timestamp.astimezone(timezone.utc)
+        return self
 
 
 class DetectionOut(BaseModel):
