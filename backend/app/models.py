@@ -41,3 +41,19 @@ class Detection(Base):
     screenshot_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     device: Mapped[Device] = relationship(back_populates="detections")
+
+
+class DeviceStatus(Base):
+    """Heartbeat de una Raspberry: métricas del sistema en un instante (hora del SERVIDOR)."""
+
+    __tablename__ = "device_status"
+    __table_args__ = (Index("ix_device_status_device_ts", "device_id", "timestamp"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    cpu_temp_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    load_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mem_used_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    disk_used_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uptime_s: Mapped[int | None] = mapped_column(Integer, nullable=True)

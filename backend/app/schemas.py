@@ -66,3 +66,31 @@ class DeviceCreate(BaseModel):
 class DeviceCreated(BaseModel):
     id: str
     token: str  # solo se muestra una vez
+
+
+class DeviceStatusIn(BaseModel):
+    """Métricas de la Raspberry. Todas opcionales: un heartbeat vacío solo indica que está viva."""
+
+    model_config = ConfigDict(extra="forbid")  # un nombre mal escrito falla en vez de ignorarse
+
+    cpu_temp_c: Optional[float] = Field(default=None, ge=-50, le=150)
+    load_1m: Optional[float] = Field(default=None, ge=0, le=1000)
+    mem_used_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    disk_used_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    uptime_s: Optional[int] = Field(default=None, ge=0)
+
+
+class DeviceStatusOut(DeviceStatusIn):
+    timestamp: datetime
+
+
+class DeviceOut(BaseModel):
+    id: str
+    name: str
+    zone: str
+    lat: float
+    lon: float
+    created_at: datetime
+    last_seen: Optional[datetime] = None  # último heartbeat; None si nunca ha enviado uno
+    online: bool
+    status: Optional[DeviceStatusOut] = None  # última métrica conocida

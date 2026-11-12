@@ -25,3 +25,10 @@ def validate_settings() -> None:
         raise RuntimeError("ADMIN_TOKEN no está definido. Genera uno con: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
     if tok.lower() in _WEAK_ADMIN_TOKENS or len(tok) < MIN_ADMIN_TOKEN_LENGTH:
         raise RuntimeError(f"ADMIN_TOKEN es demasiado débil (mínimo {MIN_ADMIN_TOKEN_LENGTH} caracteres y no un valor típico).")
+
+# --- CORS: orígenes de navegador autorizados a llamar a la API (separados por comas; "*" = todos)
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",") if o.strip()]
+
+# --- estado de los dispositivos
+# Una Raspberry se considera "online" si su último heartbeat es más reciente que esto.
+ONLINE_THRESHOLD_SECONDS = int(os.getenv("ONLINE_THRESHOLD_SECONDS", 180))

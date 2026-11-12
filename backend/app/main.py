@@ -3,10 +3,11 @@ import binascii
 import secrets
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy import Numeric, cast, func, select
 from sqlalchemy.orm import Session
@@ -14,8 +15,16 @@ from sqlalchemy.orm import Session
 from . import config
 from .db import Base, engine, get_db
 from .limits import BodySizeLimitMiddleware
-from .models import Detection, Device
-from .schemas import DetectionIn, DetectionOut, DeviceCreate, DeviceCreated
+from .models import Detection, Device, DeviceStatus
+from .schemas import (
+    DetectionIn,
+    DetectionOut,
+    DeviceCreate,
+    DeviceCreated,
+    DeviceOut,
+    DeviceStatusIn,
+    DeviceStatusOut,
+)
 from .security import hash_token, require_admin, require_device
 
 JPEG_MAGIC = b"\xff\xd8\xff"
@@ -32,6 +41,16 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="EcoNest API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=config.MAX_BODY_BYTES)
+# Añadido el ÚLTIMO para que sea el más externo: así incluso las respuestas de error
+# (413, 411...) llevan las cabeceras CORS y el navegador puede leerlas.
+# Sin credenciales/cookies: la autenticación va en la cabecera Authorization.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+    allow_credentials=False,
+)
 
 
 @app.get("/health")
@@ -48,6 +67,75 @@ def create_device(body: DeviceCreate, db: Session = Depends(get_db)):
     db.add(Device(**body.model_dump(), token_hash=hash_token(token)))
     db.commit()
     return DeviceCreated(id=body.id, token=token)
+
+
+# ------------------------------------------------------------ device status
+def _aware(dt: datetime) -> datetime:
+    """SQLite devuelve datetimes sin zona horaria; en la API todo es UTC."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _status_out(row: DeviceStatus) -> DeviceStatusOut:
+    return DeviceStatusOut(
+        timestamp=_aware(row.timestamp),
+        cpu_temp_c=row.cpu_temp_c,
+        load_1m=row.load_1m,
+        mem_used_pct=row.mem_used_pct,
+        disk_used_pct=row.disk_used_pct,
+        uptime_s=row.uptime_s,
+    )
+
+
+@app.post("/devices/me/status", response_model=DeviceStatusOut, status_code=201)
+def post_status(body: DeviceStatusIn, device: Device = Depends(require_device), db: Session = Depends(get_db)):
+    """Heartbeat de la Raspberry (temperatura, carga...). Cada ~60 s desde el cliente."""
+    row = DeviceStatus(device_id=device.id, **body.model_dump())
+    db.add(row)
+    db.commit()
+    return _status_out(row)
+
+
+@app.get("/devices", response_model=list[DeviceOut])
+def list_devices(db: Session = Depends(get_db)):
+    """Dispositivos registrados con su estado actual (online/offline y últimas métricas)."""
+    now = datetime.now(timezone.utc)
+    out = []
+    # N consultas (una por dispositivo): irrelevante con unas pocas Raspberry.
+    for d in db.scalars(select(Device).order_by(Device.id)):
+        last = db.scalar(
+            select(DeviceStatus).where(DeviceStatus.device_id == d.id).order_by(DeviceStatus.timestamp.desc()).limit(1)
+        )
+        last_seen = _aware(last.timestamp) if last else None
+        online = bool(last_seen and now - last_seen <= timedelta(seconds=config.ONLINE_THRESHOLD_SECONDS))
+        out.append(
+            DeviceOut(
+                id=d.id, name=d.name, zone=d.zone, lat=d.lat, lon=d.lon,
+                created_at=_aware(d.created_at),
+                last_seen=last_seen, online=online,
+                status=_status_out(last) if last else None,
+            )
+        )
+    return out
+
+
+@app.get("/devices/{device_id}/status", response_model=list[DeviceStatusOut])
+def device_status_history(
+    device_id: str,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """Histórico de métricas (más reciente primero), para graficar temperatura y carga."""
+    if not db.get(Device, device_id):
+        raise HTTPException(404, "Unknown device")
+    stmt = select(DeviceStatus).where(DeviceStatus.device_id == device_id)
+    if since:
+        stmt = stmt.where(DeviceStatus.timestamp >= since)
+    if until:
+        stmt = stmt.where(DeviceStatus.timestamp <= until)
+    stmt = stmt.order_by(DeviceStatus.timestamp.desc()).limit(limit)
+    return [_status_out(r) for r in db.scalars(stmt)]
 
 
 # ---------------------------------------------------------------- ingestion
@@ -165,6 +253,7 @@ def counts(
 
 @app.get("/heatmap")
 def heatmap(
+    zone: Optional[str] = None,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     precision: int = Query(4, ge=2, le=6),  # 4 decimales ≈ 11 m
@@ -174,7 +263,7 @@ def heatmap(
     lat = func.round(cast(Detection.lat, Numeric), precision)
     lon = func.round(cast(Detection.lon, Numeric), precision)
     stmt = select(lat, lon, func.sum(Detection.count))
-    stmt = _filters(stmt, None, None, since, until).group_by(lat, lon)
+    stmt = _filters(stmt, zone, None, since, until).group_by(lat, lon)
     return [{"lat": float(a), "lon": float(o), "weight": int(w)} for a, o, w in db.execute(stmt)]
 
 
