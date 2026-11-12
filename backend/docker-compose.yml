@@ -20,6 +20,7 @@ services:
       DATABASE_URL: postgresql+psycopg://econest:${POSTGRES_PASSWORD}@db:5432/econest
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Define ADMIN_TOKEN en .env (mínimo 16 caracteres)}
       SCREENSHOT_DIR: /data/screenshots
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
     volumes:
       - screenshots:/data/screenshots
     ports:

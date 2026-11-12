@@ -28,6 +28,12 @@ docker compose up --build
 - Las peticiones con cuerpo deben llevar `Content-Length`; con `Transfer-Encoding: chunked` y sin longitud se responde 411. Los clientes habituales (`httpx`, `requests`, `curl -d`) ya lo envían.
 - Pendiente: poner un proxy inverso con HTTPS delante (Caddy/nginx) con su propio límite de cuerpo.
 
+## CORS y estado de los dispositivos
+
+- **CORS:** los navegadores solo pueden llamar a la API desde los orígenes de `CORS_ORIGINS` (por defecto `http://localhost:5173,http://localhost:3000`). En producción pon el dominio real del frontend, separado por comas; `*` permite cualquiera. No se usan cookies: el token va en la cabecera `Authorization`.
+- **Online/offline:** un dispositivo está `online` si su último heartbeat (`POST /devices/me/status`) tiene menos de `ONLINE_THRESHOLD_SECONDS` (180 por defecto). La Raspberry debe enviarlo cada ~60 s. Las métricas se guardan en la tabla `device_status`, que Grafana puede graficar directamente.
+- El histórico de `device_status` crece sin límite (≈1 440 filas/día por dispositivo con un heartbeat por minuto); conviene una política de retención más adelante.
+
 ## Registrar un dispositivo (una vez por Raspberry)
 
 ```bash
@@ -58,9 +64,12 @@ curl -X POST localhost:8000/detections \
 |---|---|---|---|
 | POST | `/devices` | admin | Registrar un dispositivo y obtener su token |
 | POST | `/detections` | dispositivo | Enviar una detección |
+| POST | `/devices/me/status` | dispositivo | Heartbeat con métricas de la Raspberry (`cpu_temp_c`, `load_1m`, `mem_used_pct`, `disk_used_pct`, `uptime_s`; todas opcionales). La hora la pone el servidor |
+| GET | `/devices` | pública | Dispositivos con `online`, `last_seen` y últimas métricas |
+| GET | `/devices/{id}/status` | pública | Histórico de métricas, más reciente primero (`since`, `until`, `limit`) |
 | GET | `/detections` | pública | Historial. Filtros: `zone`, `device_id`, `since`, `until`, `limit`, `offset` |
 | GET | `/counts` | pública | Total de palomas por zona y hora/día (`granularity=hour\|day`) |
-| GET | `/heatmap` | pública | Puntos `lat, lon, weight` agregados en celdas (`precision` = decimales) |
+| GET | `/heatmap` | pública | Puntos `lat, lon, weight` agregados en celdas (`precision` = decimales). Filtros: `zone`, `since`, `until` |
 | GET | `/screenshots/{id}` | pública | Captura de una detección |
 | GET | `/health` | pública | Comprobación de estado |
 
