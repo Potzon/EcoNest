@@ -1,0 +1,147 @@
+name: CI
+
+# Se ejecuta en cada push a cualquier rama y en cada pull request hacia main.
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Si llega un push nuevo a la misma rama, cancela la ejecución anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12" # el mismo que usa backend/Dockerfile
+
+jobs:
+  # ------------------------------------------------------------------ commits
+  commits:
+    name: Revisión de commits
+    runs-on: ubuntu-latest
+    env:
+      # Pon "true" para que un commit sin referencia a issue (Closes #NN) haga fallar el CI.
+      REQUIRE_ISSUE_REF: "false"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # historial completo: hace falta para revisar commit a commit
+
+      - name: Calcular el rango de commits a revisar
+        id: range
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            RANGE="$BASE_SHA..$HEAD_SHA"                      # todos los commits del PR
+          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            RANGE="$BEFORE_SHA..$SHA"                         # lo nuevo de este push
+          elif [ "$REF" != "refs/heads/main" ] && git rev-parse --verify -q origin/main >/dev/null; then
+            RANGE="origin/main..$SHA"                         # rama nueva: lo que no está en main
+          else
+            RANGE="$SHA^!"                                    # último commit solamente
+          fi
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+          echo "Rango revisado: $RANGE"
+
+      - name: Revisar cada commit (mensaje, archivos prohibidos, tamaño)
+        run: bash .github/scripts/check_commits.sh "${{ steps.range.outputs.range }}"
+
+      - name: Resumen de commits por autor (historial completo)
+        if: always()
+        run: |
+          {
+            echo "### Commits por autor (historial completo, sin merges)"
+            echo
+            echo "| Commits | Autor |"
+            echo "|---:|---|"
+            git shortlog -sn --no-merges HEAD | awk '{ c = $1; $1 = ""; sub(/^ /, ""); printf "| %s | %s |\n", c, $0 }'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ------------------------------------------------------------------ backend
+  backend:
+    name: Backend (SQLite + PostgreSQL + Docker)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: econest
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: econest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U econest -d econest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - run: pip install -r requirements.txt
+
+      - name: Tests (SQLite)
+        run: python -m pytest -q
+
+      # La base de datos de producción es PostgreSQL: date_trunc, JSONB, zonas horarias...
+      # no se comportan igual que en SQLite.
+      - name: Tests (PostgreSQL)
+        env:
+          DATABASE_URL: postgresql+psycopg://econest:ci-password@localhost:5432/econest
+        run: python -m pytest -q
+
+      - name: Validar docker-compose.yml (con valores de mentira para los secretos)
+        env:
+          POSTGRES_PASSWORD: x
+          GRAFANA_DB_PASSWORD: x
+          GRAFANA_ADMIN_PASSWORD: x
+          ADMIN_TOKEN: 0123456789abcdef0123
+        run: docker compose config -q
+
+      - name: Construir la imagen de la API
+        run: docker build -t econest-api .
+
+  # ------------------------------------------------------- YOLO + puente + contrato
+  yolo:
+    name: Módulo YOLO y contrato con el backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            backend/requirements.txt
+
+      # ultralytics arrastra PyTorch (~GB) y los tests no lo necesitan: el detector
+      # lo importa de forma tardía. Se instala todo lo demás.
+      - name: Instalar dependencias (sin ultralytics)
+        run: |
+          grep -v -i '^ultralytics' requirements.txt > /tmp/requirements-ci.txt
+          pip install -r /tmp/requirements-ci.txt -r backend/requirements.txt
+
+      - name: Tests
+        run: python -m pytest tests -q
