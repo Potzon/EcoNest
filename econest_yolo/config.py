@@ -32,6 +32,7 @@ class BackendConfig:
     timeout: float = 10.0
     queue_size: int = 100  # detecciones pendientes si el backend no responde
     max_screenshot_bytes: int = 2_000_000  # igual que MAX_SCREENSHOT_BYTES del backend
+    heartbeat_interval: float = 60.0  # s entre latidos; el backend considera online < 180 s
 
 
 @dataclass

@@ -12,6 +12,8 @@ To store the detections and serve them to the dashboard, a second process (`upli
 
 ```
 [econest_yolo] --> econest/detections --> [uplink] --(POST /detections + device token)--> backend --> PostgreSQL --> Grafana
+                                                                  |
+                                        (heartbeat cada ~60 s: POST /devices/me/status)
 ```
 
 ## Requirements
@@ -129,6 +131,16 @@ The uplink adapts the message to the backend contract: `bbox_xyxy` becomes `bbox
 
 The Raspberry Pi clock must be synchronised (NTP): the backend rejects timestamps more than 5 minutes in the future.
 
+## Heartbeat (device status)
+
+The uplink also starts a background heartbeat thread that POSTs the Pi's system metrics to `POST /devices/me/status` every `backend.heartbeat_interval` seconds (default 60 s; the backend considers a device `online` if its last heartbeat is under 180 s). Metrics sent: `cpu_temp_c`, `load_1m`, `mem_used_pct`, `disk_used_pct`, `uptime_s` — each one is optional and skipped if it cannot be read. They appear in `GET /devices` and `GET /devices/{id}/status`, ready to graph in Grafana.
+
+To run the heartbeat as its own process (e.g. if you run the uplink elsewhere):
+
+```bash
+python -m econest_yolo.heartbeat --config config.yaml
+```
+
 ## Message contract
 
 **Input** (`mqtt.input_topic`): the payload is the JPEG itself, in bytes.
@@ -166,6 +178,8 @@ Input messages that are not valid images are discarded and recorded in the log.
 | `detector.py` | `BirdDetector`: loads the model once and runs inference |
 | `messages.py` | Builds the output JSON |
 | `service.py` | MQTT client: subscription, inference, and publishing |
+| `uplink.py` | Bridge MQTT -> backend REST (`POST /detections`) |
+| `heartbeat.py` | System metrics -> `POST /devices/me/status` every ~60 s |
 | `__main__.py` | Entry point (`python -m econest_yolo`) |
 
 ## Testing

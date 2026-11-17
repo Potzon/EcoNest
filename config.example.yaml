@@ -14,6 +14,7 @@ backend:                # opcional: si no hay url, solo se publica por MQTT
   url: null             # p. ej. https://econest.example.org
   device_id: nest-01    # el id registrado con POST /devices
   # token: ...          # NO poner aquí: export ECONEST_DEVICE_TOKEN=...
+  # heartbeat_interval: 60.0   # s entre latidos (POST /devices/me/status); el backend considera online < 180 s
 motion:                 # proceso principal: python -m econest_yolo.motion
   pin: 24               # puerto Grove D24 = GPIO 24
   active_high: true
