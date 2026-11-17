@@ -20,6 +20,7 @@ import httpx
 import paho.mqtt.client as mqtt
 
 from .config import BackendConfig, Config, load_config
+from .heartbeat import start_background
 
 log = logging.getLogger("econest_yolo.uplink")
 
@@ -103,6 +104,8 @@ def run(cfg: Config) -> None:
         raise SystemExit("Faltan backend.url, backend.device_id o ECONEST_DEVICE_TOKEN")
     uplink = Uplink(b)
     threading.Thread(target=uplink.worker, daemon=True).start()
+    # El dispositivo aparece "online" en el backend (heartbeat cada ~60 s).
+    start_background(b)
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if cfg.mqtt.username:
