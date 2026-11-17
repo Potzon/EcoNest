@@ -1,10 +1,6 @@
-import io
 from dataclasses import dataclass
-
-from PIL import Image
-
+import numpy as np
 from .config import ModelConfig
-
 
 @dataclass
 class Detection:
@@ -21,15 +17,14 @@ class BirdDetector:
         self.cfg = cfg
         self.model = YOLO(cfg.weights)
 
-    def detect(self, jpeg_bytes: bytes) -> tuple[list[Detection], int, int]:
-        """Devuelve (detecciones, ancho, alto). Lanza ValueError si la imagen es inválida."""
-        try:
-            img = Image.open(io.BytesIO(jpeg_bytes)).convert("RGB")
-        except Exception as e:
-            raise ValueError(f"imagen no decodificable: {e}") from e
-        w, h = img.size
+    def detect(self, frame: np.ndarray) -> tuple[list[Detection], int, int]:
+        if not isinstance(frame, np.ndarray) or frame.size == 0:
+            raise ValueError("frame inválido")
+
+        h, w = frame.shape[:2]
+
         res = self.model.predict(
-            img,
+            frame,
             conf=self.cfg.conf,
             classes=self.cfg.classes,
             device=self.cfg.device,
