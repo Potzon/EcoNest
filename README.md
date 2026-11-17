@@ -34,7 +34,9 @@ Each Raspberry Pi takes pictures, detects birds with a YOLO model running on the
 ```mermaid
 flowchart LR
     subgraph Pi["Raspberry Pi 5 (edge)"]
-        CAM[Camera] -->|JPEG| M1([MQTT: econest/camera/image])
+        PIR[PIR sensor D24] --> MOT[motion]
+        CAM[USB camera] --> MOT
+        MOT -->|JPEG| M1([MQTT: econest/camera/image])
         M1 --> YOLO["econest_yolo (YOLO11n)"]
         YOLO -->|JSON| M2([MQTT: econest/detections])
         M2 --> UP[uplink]
@@ -58,7 +60,8 @@ flowchart LR
 | Component | Detail |
 |---|---|
 | Board | Raspberry Pi 5, 64-bit Raspberry Pi OS (inference runs on the CPU) |
-| Sensor | Camera: _model and wiring still to be documented_ |
+| Sensor | Grove PIR motion sensor on Grove port **D24** (GPIO 24), output high on motion |
+| Camera | Logitech QuickCam Chat (USB webcam, `/dev/video0`, 352x288), captured with `ffmpeg` + `libv4l2` |
 | Actuators | _None defined yet_ |
 
 > The course brief asks the README to describe the sensors and actuators used and how they are connected. This table must be completed by whoever owns the hardware.
@@ -72,7 +75,7 @@ flowchart LR
 | Uplink to the backend (MQTT to REST, with retries) | Done |
 | Grafana | Data source provisioned; **dashboards not created yet** |
 | Continuous integration ([`ci.yml`](.github/workflows/ci.yml)) | Done |
-| Camera capture on the Pi (publishes JPEGs to MQTT) | Pending |
+| Motion-triggered camera capture on the Pi ([`motion.py`](econest_yolo/motion.py), publishes JPEGs to MQTT) | Done |
 | Raspberry Pi heartbeat (CPU temperature, load) | Pending: the API endpoint exists, nothing sends to it yet |
 | `systemd` services for the Pi | Pending |
 | HTTPS in front of the API | Pending |
@@ -140,6 +143,7 @@ pip install -r requirements.txt
 cp config.example.yaml config.yaml      # set mqtt.host, backend.url and backend.device_id
 export ECONEST_DEVICE_TOKEN=<token from step 2>
 
+python -m econest_yolo.motion --config config.yaml     # main: PIR -> photo -> MQTT (needs gpiozero, ffmpeg)
 python -m econest_yolo --config config.yaml            # detector: image -> detections (MQTT)
 python -m econest_yolo.uplink --config config.yaml     # uplink: detections (MQTT) -> backend
 ```
