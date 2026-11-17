@@ -14,3 +14,12 @@ backend:                # opcional: si no hay url, solo se publica por MQTT
   url: null             # p. ej. https://econest.example.org
   device_id: nest-01    # el id registrado con POST /devices
   # token: ...          # NO poner aquí: export ECONEST_DEVICE_TOKEN=...
+motion:                 # proceso principal: python -m econest_yolo.motion
+  pin: 24               # puerto Grove D24 = GPIO 24
+  active_high: true
+  cooldown: 5.0         # segundos mínimos entre fotos
+camera:
+  device: /dev/video0   # webcam USB (Logitech QuickCam Chat)
+  size: 352x288
+  warmup_frames: 10
+  v4l2convert: /usr/lib/aarch64-linux-gnu/libv4l/v4l2convert.so   # null si la cámara da MJPEG/YUYV
