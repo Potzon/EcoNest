@@ -40,7 +40,7 @@ flowchart LR
         M1 --> YOLO["econest_yolo (YOLO11n)"]
         YOLO -->|JSON| M2([MQTT: econest/detections])
         M2 --> UP[uplink]
-        HB["Heartbeat sender (planned)"]
+        HB["Heartbeat sender (uplink thread)"]
     end
     subgraph Server["Server (docker compose)"]
         API[FastAPI backend] --> DB[(PostgreSQL)]
@@ -76,7 +76,7 @@ flowchart LR
 | Grafana | Data source provisioned; **dashboards not created yet** |
 | Continuous integration ([`ci.yml`](.github/workflows/ci.yml)) | Done |
 | Motion-triggered camera capture on the Pi ([`motion.py`](econest_yolo/motion.py), publishes JPEGs to MQTT) | Done |
-| Raspberry Pi heartbeat (CPU temperature, load) | Pending: the API endpoint exists, nothing sends to it yet |
+| Raspberry Pi heartbeat (CPU temperature, load, memory, disk, uptime) | Done: sent by the `uplink` in a background thread every 60 s (`heartbeat_interval`), see [`econest_yolo/README.md`](econest_yolo/README.md) |
 | `systemd` services for the Pi | Pending |
 | HTTPS in front of the API | Pending |
 | Web frontend | Not in this repository yet |
@@ -146,6 +146,7 @@ export ECONEST_DEVICE_TOKEN=<token from step 2>
 python -m econest_yolo.motion --config config.yaml     # main: PIR -> photo -> MQTT (needs gpiozero, ffmpeg)
 python -m econest_yolo --config config.yaml            # detector: image -> detections (MQTT)
 python -m econest_yolo.uplink --config config.yaml     # uplink: detections (MQTT) -> backend
+                                                       #   + heartbeat to /devices/me/status every 60 s
 ```
 
 The YOLO11n weights are downloaded on first run, or manually as described in [`econest_yolo/README.md`](econest_yolo/README.md).
